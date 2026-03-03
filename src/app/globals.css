@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  --yahoo-purple: #6001d2;
+  --yahoo-purple-hover: #4f01ad;
+  --yahoo-bg: #f3f0ff;
+  --yahoo-white: #ffffff;
+  --yahoo-text: #1d1d1f;
+  --yahoo-text-light: #6e6d7a;
+  --yahoo-border: #e0dce5;
+  --yahoo-error: #d93025;
+}
+
+body {
+  background: linear-gradient(135deg, #f3f0ff 0%, #e8e0f7 50%, #d0c4f0 100%);
+  color: var(--yahoo-text);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+@layer base {
+  input {
+    @apply outline-none;
+  }
+}
