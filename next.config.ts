@@ -1,10 +1,13 @@
+const isProd = process.env.NODE_ENV === "production";
+
 const nextConfig = {
   output: "export",
   images: { unoptimized: true },
   trailingSlash: true,
+  assetPrefix: isProd ? "." : undefined,
   env: {
-    NEXT_PUBLIC_API_KEY: process.env.NEXT_PUBLIC_API_KEY,
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+    API_KEY: process.env.API_KEY,
+    API_BASE_URL: process.env.API_BASE_URL,
   },
 };
 
