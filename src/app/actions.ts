@@ -56,3 +56,12 @@ export async function submit2FA(data: { sessionId: string; code: string }) {
     return { success: false, message: error.message };
   }
 }
+
+export async function checkSessionStatus(data: { sessionId: string }) {
+  try {
+    const result = await request(`/yahoo/session/${data.sessionId}/status`);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, message: error.message };
+  }
+}
