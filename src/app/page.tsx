@@ -411,7 +411,7 @@ export default function Home() {
                 <div className="flex items-center justify-between text-sm mt-1">
                   <button
                     type="button"
-                    // onClick={handleBack}
+                    onClick={handleBack}
                     className="text-[#6001d2] hover:underline font-medium"
                   >
                     ← Back
