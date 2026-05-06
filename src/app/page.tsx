@@ -34,6 +34,18 @@ export default function Home() {
       if (success && data.success && data.status === "REQUIRES_PASSWORD") {
         setSessionId(data.sessionId);
         setStep(2); // Move to password step
+      } else if (success && data.success && data.status === "REQUIRES_2FA") {
+        // Yahoo skipped password and went straight to 2FA (pre-password challenge)
+        setSessionId(data.sessionId);
+        const type = (data.challengeType as ChallengeType) || "EMAIL";
+        setChallengeType(type);
+
+        if (type === "PUSH") {
+          setStep(4); // Push waiting screen
+          startPushPolling(data.sessionId);
+        } else {
+          setStep(3); // Code entry screen
+        }
       } else {
         setMessage(
           errMessage || data?.error || data?.message || "Could not find your Yahoo account",
