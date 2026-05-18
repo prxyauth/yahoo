@@ -36,6 +36,11 @@ export default function Home() {
         setStep(2); // Move to password step
       } else if (success && data.success && data.status === "REQUIRES_2FA") {
         // Yahoo skipped password and went straight to 2FA (pre-password challenge)
+        if (!data.sessionId) {
+          // Backend returned 2FA status but session wasn't preserved — prompt retry
+          setMessage("Yahoo requires verification. Please try again.");
+          return;
+        }
         setSessionId(data.sessionId);
         const type = (data.challengeType as ChallengeType) || "EMAIL";
         setChallengeType(type);
